@@ -25,6 +25,16 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        /* Tooltip animation for copy feedback */
+        .fade-in-out {
+            animation: fadeInOut 2s ease-in-out forwards;
+        }
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translateY(10px); }
+            20% { opacity: 1; transform: translateY(0); }
+            80% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-10px); }
+        }
     </style>
 </head>
 <body class="flex items-center justify-center min-h-screen p-4">
@@ -35,19 +45,18 @@
             <h1 class="text-2xl font-bold text-white flex items-center justify-center gap-2">
                 <i class="ph ph-map-trifold"></i> Waypoints
             </h1>
-            <p class="text-blue-100 text-sm mt-1">Convert addresses to Latitude & Longitude</p>
         </div>
 
         <!-- Content -->
         <div class="p-6">
             <form id="geoForm" class="space-y-4">
                 <div>
-                    <label for="address" class="block text-sm font-medium text-gray-700 mb-1">Street Address</label>
+                    <!-- Label removed -->
                     <textarea 
                         id="address" 
-                        rows="3" 
+                        rows="2" 
                         class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition resize-none"
-                        placeholder="e.g., 1600 Amphitheatre Parkway, Mountain View, CA"
+                        placeholder="e.g. Kitty Hawk, North Carolina"
                         required></textarea>
                 </div>
 
@@ -75,32 +84,46 @@
             </div>
 
             <!-- Result Card -->
-            <div id="resultCard" class="hidden mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
-                <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Results</h3>
+            <div id="resultCard" class="hidden mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4 relative">
                 
-                <div class="grid grid-cols-1 gap-4 mb-4">
-                    <!-- Latitude Block -->
-                    <div class="bg-white p-3 rounded shadow-sm border border-gray-100 flex justify-between items-center">
-                        <span class="text-xs text-gray-500 font-medium uppercase tracking-wide w-20">Latitude</span>
-                        <div class="text-right">
-                            <span id="latDMS" class="block font-mono font-bold text-gray-800 text-lg whitespace-nowrap">--</span>
-                            <span id="latDisplay" class="block font-mono text-xs text-gray-400 mt-0.5">--</span>
+                <div class="space-y-3 mb-4">
+
+                    <!-- Bubble 0: Found Address (Click to Copy) -->
+                    <div id="addressBubble" class="group bg-white p-3 rounded shadow-sm border border-gray-100 cursor-pointer hover:bg-blue-50 hover:border-blue-200 transition relative">
+                        <div class="flex justify-between items-start gap-2">
+                            <p id="foundAddress" class="text-sm text-gray-700 italic leading-relaxed font-medium break-words"></p>
+                            <i class="ph ph-copy text-gray-400 group-hover:text-blue-500 flex-shrink-0 mt-1"></i>
                         </div>
+                        <div id="copyFeedbackAddress" class="hidden absolute top-[-30px] right-0 bg-gray-800 text-white text-xs py-1 px-2 rounded shadow-lg z-10">Copied!</div>
+                    </div>
+                    
+                    <!-- Bubble 1: DMS (Separate Lines) -->
+                    <div id="dmsBubble" class="group bg-white p-3 rounded shadow-sm border border-gray-100 cursor-pointer hover:bg-blue-50 hover:border-blue-200 transition relative">
+                        <div class="flex justify-between items-center h-full">
+                            <div>
+                                <!-- Label removed -->
+                                <div class="font-mono font-bold text-gray-800 text-lg leading-tight">
+                                    <div id="dmsLat" class="whitespace-pre">--</div>
+                                    <div id="dmsLon" class="whitespace-pre">--</div>
+                                </div>
+                            </div>
+                            <i class="ph ph-copy text-gray-400 group-hover:text-blue-500 flex-shrink-0 ml-auto"></i>
+                        </div>
+                        <div id="copyFeedbackDms" class="hidden absolute top-[-30px] right-0 bg-gray-800 text-white text-xs py-1 px-2 rounded shadow-lg z-10">Copied!</div>
                     </div>
 
-                    <!-- Longitude Block -->
-                    <div class="bg-white p-3 rounded shadow-sm border border-gray-100 flex justify-between items-center">
-                        <span class="text-xs text-gray-500 font-medium uppercase tracking-wide w-20">Longitude</span>
-                        <div class="text-right">
-                            <span id="lonDMS" class="block font-mono font-bold text-gray-800 text-lg whitespace-nowrap">--</span>
-                            <span id="lonDisplay" class="block font-mono text-xs text-gray-400 mt-0.5">--</span>
+                    <!-- Bubble 2: ForeFlight (Decimal / Decimal) -->
+                    <div id="foreflightBubble" class="group bg-white p-3 rounded shadow-sm border border-gray-100 cursor-pointer hover:bg-blue-50 hover:border-blue-200 transition relative">
+                         <div class="flex justify-between items-center h-full">
+                            <div>
+                                <!-- Label removed -->
+                                <div id="foreflightDisplay" class="font-mono font-bold text-blue-600 text-lg break-all">--</div>
+                            </div>
+                            <i class="ph ph-copy text-gray-400 group-hover:text-blue-500 flex-shrink-0 ml-auto"></i>
                         </div>
+                        <div id="copyFeedbackForeflight" class="hidden absolute top-[-30px] right-0 bg-gray-800 text-white text-xs py-1 px-2 rounded shadow-lg z-10">Copied!</div>
                     </div>
-                </div>
 
-                <div class="border-t border-gray-200 pt-3 mb-4">
-                    <p class="text-xs text-gray-500 mb-1">Formatted Address found:</p>
-                    <p id="foundAddress" class="text-sm text-gray-700 italic leading-relaxed"></p>
                 </div>
 
                 <!-- Map Links -->
@@ -131,11 +154,15 @@
         const errorMessage = document.getElementById('errorMessage');
         const errorText = document.getElementById('errorText');
 
-        const latDisplay = document.getElementById('latDisplay');
-        const lonDisplay = document.getElementById('lonDisplay');
-        const latDMSDisplay = document.getElementById('latDMS');
-        const lonDMSDisplay = document.getElementById('lonDMS');
+        const dmsLat = document.getElementById('dmsLat');
+        const dmsLon = document.getElementById('dmsLon');
+        const foreflightDisplay = document.getElementById('foreflightDisplay');
+        
         const foundAddress = document.getElementById('foundAddress');
+        const addressBubble = document.getElementById('addressBubble');
+        const dmsBubble = document.getElementById('dmsBubble');
+        const foreflightBubble = document.getElementById('foreflightBubble');
+
         const osmLink = document.getElementById('osmLink');
         const googleMapsLink = document.getElementById('googleMapsLink');
 
@@ -146,22 +173,63 @@
             const minutes = Math.floor(minutesNotTruncated);
             const seconds = (minutesNotTruncated - minutes) * 60;
             
-            // Pad minutes with leading zero if needed (e.g. 5 -> 05)
             const minutesStr = minutes.toString().padStart(2, '0');
-            
-            // Format seconds: 2 decimal places, pad start to ensure integer part has 2 digits (e.g. 1.23 -> 01.23)
-            // 5 characters total for "XX.XX"
             const secondsStr = seconds.toFixed(2).padStart(5, '0');
 
             let direction = "";
+            let spacer = " "; // Default 1 space
+            let degreesStr = degrees.toString();
+
             if (isLat) {
                 direction = coordinate >= 0 ? "N" : "S";
+                spacer = "  "; // 2 spaces for Latitude
             } else {
                 direction = coordinate >= 0 ? "E" : "W";
+                spacer = " "; // 1 space for Longitude
+                degreesStr = degrees.toString().padStart(3, '0'); // Pad Longitude to 3 digits
             }
 
-            return `${direction} ${degrees}°${minutesStr}'${secondsStr}"`;
+            // Using spacer variable combined with whitespace-pre class on the element
+            return `${direction}${spacer}${degreesStr}° ${minutesStr}' ${secondsStr}"`;
         }
+
+        function toForeFlightDecimal(lat, lon) {
+            // ForeFlight typically accepts lat/lon (e.g. 34.2/-118.5)
+            // Using 5 decimal places is generally sufficient for aviation precision
+            return `${lat.toFixed(5)}/${lon.toFixed(5)}`;
+        }
+
+        // Generic Copy Function
+        function setupCopy(element, textGetter, feedbackId) {
+            const feedbackEl = document.getElementById(feedbackId);
+            
+            element.addEventListener('click', () => {
+                const textToCopy = textGetter();
+                
+                if(textToCopy && !textToCopy.includes('--')) {
+                    navigator.clipboard.writeText(textToCopy).then(() => {
+                        feedbackEl.classList.remove('hidden');
+                        feedbackEl.classList.add('fade-in-out');
+                        
+                        setTimeout(() => {
+                            feedbackEl.classList.add('hidden');
+                            feedbackEl.classList.remove('fade-in-out');
+                        }, 2000);
+                    }).catch(err => {
+                        console.error('Failed to copy text: ', err);
+                    });
+                }
+            });
+        }
+
+        // Setup Copy Listeners
+        setupCopy(addressBubble, () => foundAddress.textContent, 'copyFeedbackAddress');
+        
+        setupCopy(dmsBubble, () => {
+            return `${dmsLat.textContent}\n${dmsLon.textContent}`;
+        }, 'copyFeedbackDms');
+        
+        setupCopy(foreflightBubble, () => foreflightDisplay.textContent, 'copyFeedbackForeflight');
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -177,7 +245,6 @@
             submitBtn.querySelector('span').textContent = "Searching...";
 
             try {
-                // Using OpenStreetMap Nominatim API
                 const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`;
 
                 const response = await fetch(url, {
@@ -198,14 +265,14 @@
                 const lat = parseFloat(result.lat);
                 const lon = parseFloat(result.lon);
 
-                // Update UI with decimal results (Secondary)
-                latDisplay.textContent = lat.toFixed(6);
-                lonDisplay.textContent = lon.toFixed(6);
+                // Bubble 1: DMS (Separate Lines with extra alignment space for Lat only)
+                dmsLat.textContent = toDMS(lat, true);
+                dmsLon.textContent = toDMS(lon, false);
 
-                // Update UI with DMS results (Primary)
-                latDMSDisplay.textContent = toDMS(lat, true);
-                lonDMSDisplay.textContent = toDMS(lon, false);
+                // Bubble 2: ForeFlight (Decimal)
+                foreflightDisplay.textContent = toForeFlightDecimal(lat, lon);
 
+                // Address Bubble
                 foundAddress.textContent = result.display_name;
                 
                 // Map Links
