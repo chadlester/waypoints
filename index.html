@@ -51,7 +51,6 @@
         <div class="p-6">
             <form id="geoForm" class="space-y-4">
                 <div>
-                    <!-- Label removed -->
                     <textarea 
                         id="address" 
                         rows="2" 
@@ -101,7 +100,6 @@
                     <div id="dmsBubble" class="group bg-white p-3 rounded shadow-sm border border-gray-100 cursor-pointer hover:bg-blue-50 hover:border-blue-200 transition relative">
                         <div class="flex justify-between items-center h-full">
                             <div>
-                                <!-- Label removed -->
                                 <div class="font-mono font-bold text-gray-800 text-lg leading-tight">
                                     <div id="dmsLat" class="whitespace-pre">--</div>
                                     <div id="dmsLon" class="whitespace-pre">--</div>
@@ -116,7 +114,6 @@
                     <div id="foreflightBubble" class="group bg-white p-3 rounded shadow-sm border border-gray-100 cursor-pointer hover:bg-blue-50 hover:border-blue-200 transition relative">
                          <div class="flex justify-between items-center h-full">
                             <div>
-                                <!-- Label removed -->
                                 <div id="foreflightDisplay" class="font-mono font-bold text-blue-600 text-lg break-all">--</div>
                             </div>
                             <i class="ph ph-copy text-gray-400 group-hover:text-blue-500 flex-shrink-0 ml-auto"></i>
@@ -124,6 +121,23 @@
                         <div id="copyFeedbackForeflight" class="hidden absolute top-[-30px] right-0 bg-gray-800 text-white text-xs py-1 px-2 rounded shadow-lg z-10">Copied!</div>
                     </div>
 
+                </div>
+
+                <!-- Aviation Action -->
+                <div class="mb-4">
+                    <button type="button" id="findAirportsBtn" class="w-full bg-blue-50 border border-blue-200 text-blue-700 py-2 px-3 rounded text-sm font-medium hover:bg-blue-100 text-center transition flex items-center justify-center gap-2">
+                         <i class="ph ph-airplane-tilt text-lg"></i>
+                         Find nearby airports (200nm)
+                    </button>
+                    <!-- Hidden Form for AirNav POST request -->
+                    <form id="airnavForm" action="https://www.airnav.com/cgi-bin/airport-search" method="POST" target="_blank" class="hidden">
+                        <input type="hidden" name="lat" id="anLat">
+                        <input type="hidden" name="lon" id="anLon">
+                        <input type="hidden" name="NS" id="anNS">
+                        <input type="hidden" name="EW" id="anEW">
+                        <input type="hidden" name="maxdistance" value="200">
+                        <input type="hidden" name="fieldtypes" value="a">
+                    </form>
                 </div>
 
                 <!-- Map Links -->
@@ -165,6 +179,13 @@
 
         const osmLink = document.getElementById('osmLink');
         const googleMapsLink = document.getElementById('googleMapsLink');
+        
+        const findAirportsBtn = document.getElementById('findAirportsBtn');
+        const airnavForm = document.getElementById('airnavForm');
+        const anLat = document.getElementById('anLat');
+        const anLon = document.getElementById('anLon');
+        const anNS = document.getElementById('anNS');
+        const anEW = document.getElementById('anEW');
 
         function toDMS(coordinate, isLat) {
             const absolute = Math.abs(coordinate);
@@ -230,6 +251,11 @@
         }, 'copyFeedbackDms');
         
         setupCopy(foreflightBubble, () => foreflightDisplay.textContent, 'copyFeedbackForeflight');
+        
+        // Setup Find Airports Button
+        findAirportsBtn.addEventListener('click', () => {
+             airnavForm.submit();
+        });
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -245,7 +271,8 @@
             submitBtn.querySelector('span').textContent = "Searching...";
 
             try {
-                const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`;
+                // Request address details to help build AirNav link
+                const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(address)}&limit=1`;
 
                 const response = await fetch(url, {
                     headers: {
@@ -275,10 +302,21 @@
                 // Address Bubble
                 foundAddress.textContent = result.display_name;
                 
-                // Map Links
+                // --- Link Logic ---
+
+                // OSM & Google Maps
                 osmLink.href = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=16/${lat}/${lon}`;
                 googleMapsLink.href = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
                 
+                // Populate AirNav Hidden Form
+                // Lat/Lon must be unsigned decimal
+                anLat.value = Math.abs(lat);
+                anLon.value = Math.abs(lon);
+                
+                // NS / EW must be single characters
+                anNS.value = lat >= 0 ? "N" : "S";
+                anEW.value = lon >= 0 ? "E" : "W";
+
                 resultCard.classList.remove('hidden');
 
             } catch (error) {
