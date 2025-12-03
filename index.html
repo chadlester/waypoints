@@ -7,6 +7,11 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <!-- Load User's Airport Data -->
+    <!-- Ensure airports_data.js is in the same directory -->
+    <script src="airports_data.js"></script>
+
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -96,7 +101,7 @@
                         <div id="copyFeedbackAddress" class="hidden absolute top-[-30px] right-0 bg-gray-800 text-white text-xs py-1 px-2 rounded shadow-lg z-10">Copied!</div>
                     </div>
                     
-                    <!-- Bubble 1: DMS (Separate Lines) -->
+                    <!-- Bubble 1: DDM (Degrees Decimal Minutes) -->
                     <div id="dmsBubble" class="group bg-white p-3 rounded shadow-sm border border-gray-100 cursor-pointer hover:bg-blue-50 hover:border-blue-200 transition relative">
                         <div class="flex justify-between items-center h-full">
                             <div>
@@ -123,34 +128,14 @@
 
                 </div>
 
-                <!-- Aviation Action -->
-                <div class="mb-4">
-                    <button type="button" id="findAirportsBtn" class="w-full bg-blue-50 border border-blue-200 text-blue-700 py-2 px-3 rounded text-sm font-medium hover:bg-blue-100 text-center transition flex items-center justify-center gap-2">
-                         <i class="ph ph-airplane-tilt text-lg"></i>
-                         Find nearby airports (200nm)
-                    </button>
-                    <!-- Hidden Form for AirNav POST request -->
-                    <form id="airnavForm" action="https://www.airnav.com/cgi-bin/airport-search" method="POST" target="_blank" class="hidden">
-                        <input type="hidden" name="lat" id="anLat">
-                        <input type="hidden" name="lon" id="anLon">
-                        <input type="hidden" name="NS" id="anNS">
-                        <input type="hidden" name="EW" id="anEW">
-                        <input type="hidden" name="maxdistance" value="200">
-                        <input type="hidden" name="fieldtypes" value="a">
-                    </form>
+                <!-- Nearest Airports Section -->
+                <div id="airportSection" class="hidden mb-4">
+                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Closest Airports</h3>
+                    <div id="airportList" class="space-y-2">
+                        <!-- Populated by JS -->
+                    </div>
                 </div>
 
-                <!-- Map Links -->
-                <div class="flex gap-2">
-                    <a id="googleMapsLink" href="#" target="_blank" class="flex-1 bg-white border border-gray-300 text-gray-700 py-2 px-3 rounded text-sm font-medium hover:bg-gray-50 text-center transition flex items-center justify-center gap-2">
-                        <i class="ph ph-google-logo text-lg"></i>
-                        Google Maps
-                    </a>
-                    <a id="osmLink" href="#" target="_blank" class="flex-1 bg-white border border-gray-300 text-gray-700 py-2 px-3 rounded text-sm font-medium hover:bg-gray-50 text-center transition flex items-center justify-center gap-2">
-                        <i class="ph ph-map-trifold text-lg"></i>
-                        OSM
-                    </a>
-                </div>
             </div>
         </div>
         
@@ -177,46 +162,119 @@
         const dmsBubble = document.getElementById('dmsBubble');
         const foreflightBubble = document.getElementById('foreflightBubble');
 
-        const osmLink = document.getElementById('osmLink');
-        const googleMapsLink = document.getElementById('googleMapsLink');
-        
-        const findAirportsBtn = document.getElementById('findAirportsBtn');
-        const airnavForm = document.getElementById('airnavForm');
-        const anLat = document.getElementById('anLat');
-        const anLon = document.getElementById('anLon');
-        const anNS = document.getElementById('anNS');
-        const anEW = document.getElementById('anEW');
+        const airportSection = document.getElementById('airportSection');
+        const airportList = document.getElementById('airportList');
 
-        function toDMS(coordinate, isLat) {
+        // Haversine Formula for Spherical Earth
+        function getDistanceNM(lat1, lon1, lat2, lon2) {
+            const R = 3440.065; // Earth Radius in Nautical Miles
+            
+            const toRad = (value) => value * Math.PI / 180;
+            const dLat = toRad(lat2 - lat1);
+            const dLon = toRad(lon2 - lon1);
+            
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2) * Math.sin(dLon/2);
+            
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        function findClosestAirports(lat, lon) {
+            if (typeof AIRPORTS_DATA === 'undefined' || !Array.isArray(AIRPORTS_DATA)) {
+                console.warn("AIRPORTS_DATA not found. Make sure airports_data.js is loaded.");
+                return [];
+            }
+
+            // Map distances
+            const airportsWithDist = AIRPORTS_DATA.map(airport => {
+                // Schema: [gps_code, latitude_deg, longitude_deg, longest_runway_ft, name]
+                const dist = getDistanceNM(lat, lon, airport[1], airport[2]);
+                return {
+                    code: airport[0],
+                    lat: airport[1],
+                    lon: airport[2],
+                    runway: airport[3],
+                    name: airport[4],
+                    dist: dist
+                };
+            });
+
+            // Sort by distance ascending
+            airportsWithDist.sort((a, b) => a.dist - b.dist);
+
+            // Return top 3
+            return airportsWithDist.slice(0, 3);
+        }
+
+        function renderAirports(airports, originLat, originLon) {
+            airportList.innerHTML = '';
+            
+            if (airports.length === 0) {
+                airportSection.classList.add('hidden');
+                return;
+            }
+
+            airports.forEach(apt => {
+                const item = document.createElement('div');
+                item.className = "bg-gray-50 p-2 rounded border border-gray-100 flex items-center justify-between";
+                
+                // Format runway length (e.g. 10000 -> 10,000)
+                const rwy = apt.runway ? `${apt.runway.toLocaleString()}ft` : "N/A";
+
+                // Google Maps Driving Directions: From Airport TO Waypoint
+                // Origin: Airport, Dest: Waypoint
+                const driveLink = `https://www.google.com/maps/dir/?api=1&origin=${apt.lat},${apt.lon}&destination=${originLat},${originLon}&travelmode=driving`;
+                
+                // AirNav Link
+                const airnavLink = `https://www.airnav.com/airport/${apt.code}`;
+
+                item.innerHTML = `
+                    <div class="flex-1 min-w-0 pr-2">
+                        <div class="flex items-center gap-2">
+                            <a href="${airnavLink}" target="_blank" class="text-blue-600 font-bold hover:underline font-mono text-sm">${apt.code}</a>
+                            <span class="text-xs text-gray-500 font-mono">${apt.dist.toFixed(1)}nm</span>
+                        </div>
+                        <div class="text-xs text-gray-800 truncate" title="${apt.name}">${apt.name}</div>
+                        <div class="text-[10px] text-gray-400">Rwy: ${rwy}</div>
+                    </div>
+                    <a href="${driveLink}" target="_blank" title="Drive from Airport to Waypoint" class="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-white border border-gray-200 rounded-full text-blue-600 hover:bg-blue-50 transition">
+                        <i class="ph ph-car text-lg"></i>
+                    </a>
+                `;
+                airportList.appendChild(item);
+            });
+            
+            airportSection.classList.remove('hidden');
+        }
+
+        // Updated Function: Degrees Decimal Minutes (Garmin format)
+        // Added space after N/S direction
+        function toDDM(coordinate, isLat) {
             const absolute = Math.abs(coordinate);
             const degrees = Math.floor(absolute);
-            const minutesNotTruncated = (absolute - degrees) * 60;
-            const minutes = Math.floor(minutesNotTruncated);
-            const seconds = (minutesNotTruncated - minutes) * 60;
+            // Get remainder as decimal minutes
+            const minutesDecimal = (absolute - degrees) * 60;
             
-            const minutesStr = minutes.toString().padStart(2, '0');
-            const secondsStr = seconds.toFixed(2).padStart(5, '0');
+            // Format minutes to 2 decimal places (hundredths of a minute)
+            const minutesStr = minutesDecimal.toFixed(2).padStart(5, '0');
 
             let direction = "";
-            let spacer = " "; // Default 1 space
             let degreesStr = degrees.toString();
 
             if (isLat) {
-                direction = coordinate >= 0 ? "N" : "S";
-                spacer = "  "; // 2 spaces for Latitude
+                // Added single space here
+                direction = coordinate >= 0 ? "N " : "S ";
             } else {
                 direction = coordinate >= 0 ? "E" : "W";
-                spacer = " "; // 1 space for Longitude
-                degreesStr = degrees.toString().padStart(3, '0'); // Pad Longitude to 3 digits
+                degreesStr = degrees.toString().padStart(3, '0'); 
             }
 
-            // Using spacer variable combined with whitespace-pre class on the element
-            return `${direction}${spacer}${degreesStr}° ${minutesStr}' ${secondsStr}"`;
+            // Compact format with space for Lat: N 36°45.50' vs W122°45.50'
+            return `${direction}${degreesStr}°${minutesStr}'`;
         }
 
         function toForeFlightDecimal(lat, lon) {
-            // ForeFlight typically accepts lat/lon (e.g. 34.2/-118.5)
-            // Using 5 decimal places is generally sufficient for aviation precision
             return `${lat.toFixed(5)}/${lon.toFixed(5)}`;
         }
 
@@ -252,11 +310,6 @@
         
         setupCopy(foreflightBubble, () => foreflightDisplay.textContent, 'copyFeedbackForeflight');
         
-        // Setup Find Airports Button
-        findAirportsBtn.addEventListener('click', () => {
-             airnavForm.submit();
-        });
-
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             const address = addressInput.value.trim();
@@ -266,6 +319,7 @@
             // Reset UI
             errorMessage.classList.add('hidden');
             resultCard.classList.add('hidden');
+            airportSection.classList.add('hidden');
             loading.classList.remove('hidden');
             submitBtn.disabled = true;
             submitBtn.querySelector('span').textContent = "Searching...";
@@ -292,34 +346,24 @@
                 const lat = parseFloat(result.lat);
                 const lon = parseFloat(result.lon);
 
-                // Bubble 1: DMS (Separate Lines with extra alignment space for Lat only)
-                dmsLat.textContent = toDMS(lat, true);
-                dmsLon.textContent = toDMS(lon, false);
+                // Bubble 1: DDM (Degrees Decimal Minutes)
+                dmsLat.textContent = toDDM(lat, true);
+                dmsLon.textContent = toDDM(lon, false);
 
-                // Bubble 2: ForeFlight (Decimal)
+                // Bubble 2: ForeFlight
                 foreflightDisplay.textContent = toForeFlightDecimal(lat, lon);
 
                 // Address Bubble
                 foundAddress.textContent = result.display_name;
                 
-                // --- Link Logic ---
-
-                // OSM & Google Maps
-                osmLink.href = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=16/${lat}/${lon}`;
-                googleMapsLink.href = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
-                
-                // Populate AirNav Hidden Form
-                // Lat/Lon must be unsigned decimal
-                anLat.value = Math.abs(lat);
-                anLon.value = Math.abs(lon);
-                
-                // NS / EW must be single characters
-                anNS.value = lat >= 0 ? "N" : "S";
-                anEW.value = lon >= 0 ? "E" : "W";
+                // --- Calculate Closest Airports ---
+                const closestAirports = findClosestAirports(lat, lon);
+                renderAirports(closestAirports, lat, lon);
 
                 resultCard.classList.remove('hidden');
 
             } catch (error) {
+                console.error(error);
                 errorText.textContent = error.message;
                 errorMessage.classList.remove('hidden');
             } finally {
