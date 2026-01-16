@@ -101,7 +101,7 @@
                         <div id="copyFeedbackAddress" class="hidden absolute top-[-30px] right-0 bg-gray-800 text-white text-xs py-1 px-2 rounded shadow-lg z-10">Copied!</div>
                     </div>
                     
-                    <!-- Bubble 1: DDM (Degrees Decimal Minutes) -->
+                    <!-- Bubble 1: DMS (Degrees Minutes Seconds) -->
                     <div id="dmsBubble" class="group bg-white p-3 rounded shadow-sm border border-gray-100 cursor-pointer hover:bg-blue-50 hover:border-blue-200 transition relative">
                         <div class="flex justify-between items-center h-full">
                             <div>
@@ -136,6 +136,15 @@
                     </div>
                 </div>
 
+                <!-- VFR Map Section -->
+                <div id="vfrMapSection" class="hidden relative rounded-lg overflow-hidden border border-gray-300 shadow-sm group">
+                    <!-- Overlay Link (Invisible, covers map to capture clicks) -->
+                    <a id="chartLink" href="#" target="_blank" class="absolute inset-0 z-10 cursor-pointer" title="Click to open full chart in SkyVector">
+                    </a>
+                    <!-- Embedded Map (VFRMap as proxy for visual style) -->
+                    <iframe id="vfrFrame" class="w-full h-48 border-0" scrolling="no" src=""></iframe>
+                </div>
+
             </div>
         </div>
         
@@ -164,6 +173,10 @@
 
         const airportSection = document.getElementById('airportSection');
         const airportList = document.getElementById('airportList');
+
+        const vfrMapSection = document.getElementById('vfrMapSection');
+        const vfrFrame = document.getElementById('vfrFrame');
+        const chartLink = document.getElementById('chartLink');
 
         // Haversine Formula for Spherical Earth
         function getDistanceNM(lat1, lon1, lat2, lon2) {
@@ -248,30 +261,32 @@
             airportSection.classList.remove('hidden');
         }
 
-        // Updated Function: Degrees Decimal Minutes (Garmin format)
-        // Added space after N/S direction
-        function toDDM(coordinate, isLat) {
+        // Updated Function: Degrees Minutes Seconds (DMS)
+        function toDMS(coordinate, isLat) {
             const absolute = Math.abs(coordinate);
             const degrees = Math.floor(absolute);
-            // Get remainder as decimal minutes
+            // Get remainder for minutes
             const minutesDecimal = (absolute - degrees) * 60;
+            const minutes = Math.floor(minutesDecimal);
+            // Get remainder for seconds
+            const seconds = (minutesDecimal - minutes) * 60;
             
-            // Format minutes to 2 decimal places (hundredths of a minute)
-            const minutesStr = minutesDecimal.toFixed(2).padStart(5, '0');
+            const minutesStr = minutes.toString().padStart(2, '0');
+            const secondsStr = seconds.toFixed(2).padStart(5, '0');
 
             let direction = "";
             let degreesStr = degrees.toString();
 
             if (isLat) {
-                // Added single space here
+                // Space after direction for Lat
                 direction = coordinate >= 0 ? "N " : "S ";
             } else {
                 direction = coordinate >= 0 ? "E" : "W";
                 degreesStr = degrees.toString().padStart(3, '0'); 
             }
 
-            // Compact format with space for Lat: N 36°45.50' vs W122°45.50'
-            return `${direction}${degreesStr}°${minutesStr}'`;
+            // Format: N 36°45'30.50"
+            return `${direction}${degreesStr}°${minutesStr}'${secondsStr}"`;
         }
 
         function toForeFlightDecimal(lat, lon) {
@@ -320,6 +335,7 @@
             errorMessage.classList.add('hidden');
             resultCard.classList.add('hidden');
             airportSection.classList.add('hidden');
+            vfrMapSection.classList.add('hidden');
             loading.classList.remove('hidden');
             submitBtn.disabled = true;
             submitBtn.querySelector('span').textContent = "Searching...";
@@ -346,9 +362,9 @@
                 const lat = parseFloat(result.lat);
                 const lon = parseFloat(result.lon);
 
-                // Bubble 1: DDM (Degrees Decimal Minutes)
-                dmsLat.textContent = toDDM(lat, true);
-                dmsLon.textContent = toDDM(lon, false);
+                // Bubble 1: DMS (Degrees Minutes Seconds)
+                dmsLat.textContent = toDMS(lat, true);
+                dmsLon.textContent = toDMS(lon, false);
 
                 // Bubble 2: ForeFlight
                 foreflightDisplay.textContent = toForeFlightDecimal(lat, lon);
@@ -359,6 +375,15 @@
                 // --- Calculate Closest Airports ---
                 const closestAirports = findClosestAirports(lat, lon);
                 renderAirports(closestAirports, lat, lon);
+
+                // --- VFR Map Section ---
+                // SkyVector Link (Actual Destination for the marker/reticle)
+                chartLink.href = `https://skyvector.com/?ll=${lat},${lon}&chart=301&zoom=3`;
+                
+                // VFRMap Embed (Visual Proxy because it allows iframing)
+                vfrFrame.src = `https://vfrmap.com/map.html?lat=${lat}&lon=${lon}&zoom=10&map=sec`;
+                
+                vfrMapSection.classList.remove('hidden');
 
                 resultCard.classList.remove('hidden');
 
